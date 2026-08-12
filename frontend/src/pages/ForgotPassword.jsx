@@ -126,7 +126,7 @@ export default function ForgotPassword() {
     if (!email.trim()) return;
     setLoading(true);
     try {
-      await api.post('/api/v1/auth/forgot-password', { email: email.trim() });
+      await api.post('/auth/forgot-password', { email: email.trim() });
       success('OTP sent! Check your inbox.');
       setStep(1);
       setCountdown(60);
@@ -142,7 +142,7 @@ export default function ForgotPassword() {
     if (countdown > 0) return;
     setLoading(true);
     try {
-      await api.post('/api/v1/auth/forgot-password', { email: email.trim() });
+      await api.post('/auth/forgot-password', { email: email.trim() });
       success('New OTP sent!');
       setCountdown(60);
       setOtp('');
@@ -168,7 +168,7 @@ export default function ForgotPassword() {
     if (newPassword.length < 8)      { toastError('Password must be at least 8 characters'); return; }
     setLoading(true);
     try {
-      await api.post('/api/v1/auth/verify-otp-reset', {
+      await api.post('/auth/verify-otp-reset', {
         email: email.trim(),
         otp:   otp.trim(),
         newPassword,
