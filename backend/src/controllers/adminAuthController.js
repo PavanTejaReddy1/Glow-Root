@@ -25,19 +25,8 @@ const login = asyncHandler(async (req, res, next) => {
   admin.lastLogin = new Date();
   await admin.save();
 
-  res.cookie('adminAccessToken', accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie('adminRefreshToken', refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie('adminAccessToken',  accessToken,  adminCookieOpts(15 * 60 * 1000));
+  res.cookie('adminRefreshToken', refreshToken, adminCookieOpts(7 * 24 * 60 * 60 * 1000));
 
   res.status(200).json({
     status: 'success',
@@ -57,8 +46,8 @@ const login = asyncHandler(async (req, res, next) => {
 });
 
 const logout = asyncHandler(async (req, res, next) => {
-  res.clearCookie('adminAccessToken');
-  res.clearCookie('adminRefreshToken');
+  res.clearCookie('adminAccessToken',  { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
+  res.clearCookie('adminRefreshToken', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
 
   res.status(200).json({
     status: 'success',
@@ -84,19 +73,8 @@ const refreshToken = asyncHandler(async (req, res, next) => {
   const newAccessToken = jwt.generateAccessToken(admin._id, 'admin');
   const newRefreshToken = jwt.generateRefreshToken(admin._id);
 
-  res.cookie('adminAccessToken', newAccessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie('adminRefreshToken', newRefreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie('adminAccessToken',  newAccessToken,  adminCookieOpts(15 * 60 * 1000));
+  res.cookie('adminRefreshToken', newRefreshToken, adminCookieOpts(7 * 24 * 60 * 60 * 1000));
 
   res.status(200).json({
     status: 'success',

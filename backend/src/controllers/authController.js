@@ -7,6 +7,16 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
+// Cross-site: frontend (glow-root-5z19.vercel.app) and backend (glow-root-rose.vercel.app)
+// are different origins — cookies must use sameSite:'none' + secure:true in production
+const cookieOpts = (maxAge) => ({
+  httpOnly: true,
+  secure:   isProduction,
+  sameSite: isProduction ? 'none' : 'lax',
+  path:     '/',
+  maxAge,
+});
+
 const register = asyncHandler(async (req, res, next) => {
   const { firstName, lastName, email, phone, password } = req.body;
 
@@ -29,15 +39,8 @@ const register = asyncHandler(async (req, res, next) => {
 
   await User.findByIdAndUpdate(user._id, { refreshToken });
 
-  const cookieOpts = {
-    httpOnly: true,
-    secure:   isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
-    path: '/',
-  };
-
-  res.cookie('accessToken',  accessToken,  { ...cookieOpts, maxAge: 15 * 60 * 1000 });
-  res.cookie('refreshToken', refreshToken, { ...cookieOpts, maxAge: 7 * 24 * 60 * 60 * 1000 });
+  res.cookie('accessToken',  accessToken,  cookieOpts(15 * 60 * 1000));
+  res.cookie('refreshToken', refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
   res.status(201).json({
     status: 'success',
@@ -75,15 +78,8 @@ const login = asyncHandler(async (req, res, next) => {
   user.lastLogin    = new Date();
   await user.save();
 
-  const cookieOpts = {
-    httpOnly: true,
-    secure:   isProduction,
-    sameSite: isProduction ? 'strict' : 'lax',
-    path: '/',
-  };
-
-  res.cookie('accessToken',  accessToken,  { ...cookieOpts, maxAge: 15 * 60 * 1000 });
-  res.cookie('refreshToken', refreshToken, { ...cookieOpts, maxAge: 7 * 24 * 60 * 60 * 1000 });
+  res.cookie('accessToken',  accessToken,  cookieOpts(15 * 60 * 1000));
+  res.cookie('refreshToken', refreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
   res.status(200).json({
     status: 'success',
@@ -111,8 +107,8 @@ const logout = asyncHandler(async (req, res, next) => {
     await user.save();
   }
 
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
+  res.clearCookie('accessToken',  { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
+  res.clearCookie('refreshToken', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
 
   res.status(200).json({
     status: 'success',
@@ -145,19 +141,8 @@ const refreshToken = asyncHandler(async (req, res, next) => {
   user.refreshToken = newRefreshToken;
   await user.save();
 
-  res.cookie('accessToken', newAccessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie('refreshToken', newRefreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
+  res.cookie('accessToken',  newAccessToken,  cookieOpts(15 * 60 * 1000));
+  res.cookie('refreshToken', newRefreshToken, cookieOpts(7 * 24 * 60 * 60 * 1000));
 
   res.status(200).json({
     status: 'success',
@@ -402,8 +387,8 @@ const deleteAccount = asyncHandler(async (req, res, next) => {
   user.isActive = false;
   await user.save();
 
-  res.clearCookie('accessToken');
-  res.clearCookie('refreshToken');
+  res.clearCookie('accessToken',  { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
+  res.clearCookie('refreshToken', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax', path: '/' });
 
   res.status(200).json({
     status: 'success',
