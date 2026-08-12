@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import navbar_logo from '../../../assets/navbar_logo.png';
+import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
 
 const sidebarItems = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/admin/dashboard' },
@@ -32,6 +33,13 @@ const sidebarItems = [
 
 export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobileOpen }) {
   const location = useLocation();
+  const navigate = useNavigate();
+  const { logout } = useAdminAuth();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/admin/login');
+  };
 
   return (
     <>
@@ -133,6 +141,7 @@ export default function Sidebar({ collapsed, setCollapsed, mobileOpen, setMobile
           {/* Logout */}
           <div className="border-t p-4" style={{ borderColor: 'rgba(197,155,69,0.25)' }}>
             <button
+              onClick={handleLogout}
               className="flex items-center gap-3 rounded-full px-4 py-3 text-slate-700 transition-all hover:bg-amber-100 w-full"
               style={{ fontFamily: '"Poppins", sans-serif' }}
             >

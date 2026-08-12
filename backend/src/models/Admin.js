@@ -54,6 +54,19 @@ const adminSchema = new mongoose.Schema({
     type: Date,
     default: null,
   },
+  passwordResetOtp: {
+    type: String,
+    select: false,
+  },
+  passwordResetOtpExpires: {
+    type: Date,
+    select: false,
+  },
+  passwordResetOtpVerified: {
+    type: Boolean,
+    default: false,
+    select: false,
+  },
   isActive: {
     type: Boolean,
     default: true,
@@ -65,21 +78,29 @@ const adminSchema = new mongoose.Schema({
 });
 
 // Indexes
-adminSchema.index({ email: 1 });
 adminSchema.index({ isActive: 1 });
 
 // Pre-save middleware to hash password
 adminSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
-    return next();
+    if (typeof next === 'function') {
+      return next();
+    }
+    return;
   }
   
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
+    if (typeof next === 'function') {
+      next();
+    }
   } catch (error) {
-    next(error);
+    if (typeof next === 'function') {
+      next(error);
+    } else {
+      throw error;
+    }
   }
 });
 

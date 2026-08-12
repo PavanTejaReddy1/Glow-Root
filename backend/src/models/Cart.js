@@ -97,15 +97,6 @@ const cartSchema = new mongoose.Schema({
 });
 
 // Indexes
-cartSchema.index({ user: 1 });
-
-// Pre-save middleware to calculate totals
-cartSchema.pre('save', function(next) {
-  this.subtotal = this.items.reduce((sum, item) => sum + item.total, 0);
-  this.discount = this.coupon?.discount || 0;
-  this.total = this.subtotal + this.shippingCharge + this.tax - this.discount;
-  next();
-});
 
 // Method to add item
 cartSchema.methods.addItem = function(product, quantity = 1, variant = null) {

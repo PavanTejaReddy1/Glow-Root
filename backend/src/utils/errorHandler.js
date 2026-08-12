@@ -90,6 +90,35 @@ const globalErrorHandler = (err, req, res, next) => {
   err.statusCode = err.statusCode || 500;
   err.status = err.status || 'error';
 
+  // Handle multer errors with clear messages
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Image too large. Maximum size is 10 MB per file.',
+    });
+  }
+  if (err.code === 'LIMIT_FILE_COUNT') {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Too many files. Maximum 10 images per product.',
+    });
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({
+      status: 'fail',
+      message: 'Unexpected file field. Use "images" for product photos.',
+    });
+  }
+
+  // Always log 500s with full details so we can diagnose
+  if (err.statusCode >= 500) {
+    console.error('=== SERVER ERROR ===');
+    console.error('URL:', req.method, req.originalUrl);
+    console.error('Message:', err.message);
+    console.error('Stack:', err.stack);
+    console.error('===================');
+  }
+
   if (process.env.NODE_ENV === 'development') {
     return sendErrorDev(err, req, res);
   }

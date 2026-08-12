@@ -27,11 +27,9 @@ const categorySchema = new mongoose.Schema({
   image: {
     url: {
       type: String,
-      required: true,
     },
     publicId: {
       type: String,
-      required: true,
     },
     alt: {
       type: String,
@@ -92,8 +90,6 @@ const categorySchema = new mongoose.Schema({
 });
 
 // Indexes
-categorySchema.index({ name: 1 });
-categorySchema.index({ slug: 1 });
 categorySchema.index({ parent: 1 });
 categorySchema.index({ isFeatured: 1 });
 categorySchema.index({ isActive: 1 });
@@ -115,7 +111,9 @@ categorySchema.pre('save', function(next) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
   }
-  next();
+  if (typeof next === 'function') {
+    next();
+  }
 });
 
 // Static method to get top-level categories

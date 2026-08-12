@@ -7,6 +7,9 @@ const wishlistItemSchema = new mongoose.Schema({
     ref: 'Product',
     required: true,
   },
+  productSlug: {
+    type: String,
+  },
   productName: {
     type: String,
     required: true,
@@ -49,7 +52,6 @@ const wishlistSchema = new mongoose.Schema({
 });
 
 // Indexes
-wishlistSchema.index({ user: 1 });
 wishlistSchema.index({ 'items.product': 1 });
 
 // Method to add item
@@ -61,6 +63,7 @@ wishlistSchema.methods.addItem = function(product) {
   if (!exists) {
     this.items.push({
       product: product._id,
+      productSlug: product.slug,
       productName: product.name,
       productImage: product.images[0]?.url,
       price: product.price,

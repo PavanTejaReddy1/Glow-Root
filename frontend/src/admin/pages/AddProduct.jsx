@@ -1,35 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, Save, X, Upload, Plus, Trash2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { productService } from '../../services/productService.js';
+import { categoryService } from '../../services/categoryService.js';
+import { useToast } from '../../context/ToastContext.jsx';
 
 export default function AddProduct() {
   const navigate = useNavigate();
+  const { success, error } = useToast();
   const [images, setImages] = useState([]);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
 
   const [formData, setFormData] = useState({
-    name: '',
-    slug: '',
-    category: '',
-    brand: 'GlowRoot',
-    description: '',
-    ingredients: '',
-    benefits: '',
-    howToUse: '',
-    mrp: '',
-    sellingPrice: '',
-    discount: '',
-    stock: '',
-    sku: '',
-    weight: '',
-    featured: false,
-    bestSeller: false,
-    newArrival: false,
-    published: true,
-    seoTitle: '',
-    seoDescription: ''
+    name:           '',
+    slug:           '',
+    category:       '',
+    brand:          'GlowRoot',
+    description:    '',
+    shortDescription: '',
+    ingredients:    '',  // textarea — one item per line
+    benefits:       '',  // textarea — one item per line
+    howToUse:       '',
+    sellingPrice:   '',
+    discount:       '',
+    stock:          '',
+    sku:            '',
+    featured:       false,
+    bestSeller:     false,
+    newArrival:     false,
+    published:      true,
+    seoTitle:       '',
+    seoDescription: '',
   });
 
   const handleImageUpload = (e) => {
@@ -56,11 +62,66 @@ export default function AddProduct() {
     setTags(tags.filter(t => t !== tag));
   };
 
-  const handleSubmit = (e) => {
+  useEffect(() => {
+    fetchCategories();
+  }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const response = await categoryService.getCategories();
+      setCategories(response.data?.categories || []);
+    } catch (err) {
+      console.error('Error fetching categories:', err);
+    } finally {
+      setCategoriesLoading(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Product data:', { ...formData, images, tags });
-    alert('Product saved successfully!');
-    navigate('/admin/products');
+    setLoading(true);
+
+    try {
+      // Create FormData for file upload
+      const formDataToSend = new FormData();
+      
+      // Core fields — correct backend names
+      formDataToSend.append('name',         formData.name);
+      formDataToSend.append('category',     formData.category);
+      formDataToSend.append('brand',        formData.brand || '');
+      formDataToSend.append('description',  formData.description);
+      formDataToSend.append('howToUse',     formData.howToUse     || '');
+      formDataToSend.append('price',        formData.sellingPrice);
+      formDataToSend.append('discount',     formData.discount     || '0');
+      formDataToSend.append('stock',        formData.stock);
+      formDataToSend.append('status',       formData.published ? 'active' : 'draft');
+      formDataToSend.append('isFeatured',   String(formData.featured));
+      formDataToSend.append('isBestSeller', String(formData.bestSeller));
+      formDataToSend.append('isNewArrival', String(formData.newArrival));
+      formDataToSend.append('seoTitle',        formData.seoTitle        || '');
+      formDataToSend.append('seoDescription',  formData.seoDescription  || '');
+
+      // Textarea array fields — one item per line; backend splits by \n
+      formDataToSend.append('ingredients', formData.ingredients || '');
+      formDataToSend.append('benefits',    formData.benefits    || '');
+
+      // Tags
+      formDataToSend.append('tags', tags.join('\n'));
+
+      // Add images
+      images.forEach(image => {
+        formDataToSend.append('images', image.file);
+      });
+
+      await productService.createProduct(formDataToSend);
+      success('Product created successfully!');
+      navigate('/admin/products');
+    } catch (err) {
+      console.error('Error creating product:', err);
+      error(err.response?.data?.message || 'Failed to create product');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -81,10 +142,20 @@ export default function AddProduct() {
         </div>
         <button
           onClick={handleSubmit}
-          className="flex items-center gap-2 rounded-lg bg-amber-500 px-6 py-2 text-white hover:bg-amber-600 transition-colors"
+          disabled={loading}
+          className="flex items-center gap-2 rounded-lg bg-amber-500 px-6 py-2 text-white hover:bg-amber-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <Save className="h-4 w-4" />
-          Save Product
+          {loading ? (
+            <>
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save className="h-4 w-4" />
+              Save Product
+            </>
+          )}
         </button>
       </div>
 
@@ -128,15 +199,14 @@ export default function AddProduct() {
                     onChange={(e) => setFormData({ ...formData, category: e.target.value })}
                     className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
                     required
+                    disabled={categoriesLoading}
                   >
                     <option value="">Select Category</option>
-                    <option value="Serums">Serums</option>
-                    <option value="Moisturizers">Moisturizers</option>
-                    <option value="Masks">Masks</option>
-                    <option value="Oils">Oils</option>
-                    <option value="Cleansers">Cleansers</option>
-                    <option value="Eye Care">Eye Care</option>
-                    <option value="Mists">Mists</option>
+                    {categories.map((cat) => (
+                      <option key={cat._id} value={cat._id}>
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
@@ -180,22 +250,18 @@ export default function AddProduct() {
               <h3 className="mb-4 text-lg font-semibold text-slate-900">Product Details</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Ingredients</label>
-                  <textarea
-                    value={formData.ingredients}
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Ingredients <span className="font-normal text-slate-400">(one per line)</span></label>
+                  <textarea value={formData.ingredients}
                     onChange={(e) => setFormData({ ...formData, ingredients: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                    rows={3} placeholder="Neem extract&#10;Tulsi leaf&#10;Rose water"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Benefits</label>
-                  <textarea
-                    value={formData.benefits}
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Benefits <span className="font-normal text-slate-400">(one per line)</span></label>
+                  <textarea value={formData.benefits}
                     onChange={(e) => setFormData({ ...formData, benefits: e.target.value })}
-                    rows={3}
-                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                    rows={3} placeholder="Reduces acne&#10;Brightens skin&#10;Hydrates deeply"
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">How To Use</label>
@@ -272,32 +338,24 @@ export default function AddProduct() {
               <h3 className="mb-4 text-lg font-semibold text-slate-900">Pricing</h3>
               <div className="space-y-4">
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">MRP (₹)</label>
-                  <input
-                    type="number"
-                    value={formData.mrp}
-                    onChange={(e) => setFormData({ ...formData, mrp: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">Selling Price (₹)</label>
-                  <input
-                    type="number"
-                    value={formData.sellingPrice}
+                  <label className="mb-2 block text-sm font-medium text-slate-700">Selling Price (₹) *</label>
+                  <input type="number" min="0" value={formData.sellingPrice}
                     onChange={(e) => setFormData({ ...formData, sellingPrice: e.target.value })}
                     className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                    required
-                  />
+                    required />
                 </div>
                 <div>
                   <label className="mb-2 block text-sm font-medium text-slate-700">Discount (%)</label>
-                  <input
-                    type="number"
-                    value={formData.discount}
+                  <input type="number" min="0" max="100" value={formData.discount}
                     onChange={(e) => setFormData({ ...formData, discount: e.target.value })}
-                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
+                    className="w-full rounded-lg border border-slate-200 px-4 py-2 focus:outline-none focus:ring-2 focus:ring-amber-500" />
+                  <p className="mt-1 text-xs text-slate-400">
+                    Original price shown as: ₹{
+                      formData.sellingPrice && formData.discount
+                        ? Math.round(Number(formData.sellingPrice) / (1 - Number(formData.discount) / 100)).toLocaleString('en-IN')
+                        : '—'
+                    }
+                  </p>
                 </div>
               </div>
             </motion.div>

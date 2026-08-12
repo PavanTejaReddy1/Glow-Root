@@ -1,10 +1,19 @@
 import { Bell, Search, User, ChevronDown, Menu } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAdminAuth } from '../../../context/AdminAuthContext.jsx';
 
 export default function Header({ title, subtitle, setMobileOpen }) {
+  const navigate = useNavigate();
+  const { logout } = useAdminAuth();
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/admin/login');
+  };
 
   return (
     <header
@@ -180,18 +189,27 @@ export default function Header({ title, subtitle, setMobileOpen }) {
                 </div>
                 <div className="py-2">
                   <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      navigate('/admin/settings');
+                    }}
                     className="block w-full px-4 py-2 text-left text-sm transition-colors hover:bg-amber-50"
                     style={{ fontFamily: '"Poppins", sans-serif', color: '#4B2F1F' }}
                   >
                     Profile
                   </button>
                   <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      navigate('/admin/settings');
+                    }}
                     className="block w-full px-4 py-2 text-left text-sm transition-colors hover:bg-amber-50"
                     style={{ fontFamily: '"Poppins", sans-serif', color: '#4B2F1F' }}
                   >
                     Settings
                   </button>
                   <button
+                    onClick={handleLogout}
                     className="block w-full px-4 py-2 text-left text-sm transition-colors hover:bg-amber-50"
                     style={{ fontFamily: '"Poppins", sans-serif', color: '#C59B45' }}
                   >

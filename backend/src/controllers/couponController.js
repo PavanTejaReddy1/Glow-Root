@@ -20,7 +20,8 @@ const createCoupon = asyncHandler(async (req, res, next) => {
     isActive,
   } = req.body;
 
-  const existingCoupon = await Coupon.findOne({ code });
+  // Only conflict if a non-deleted coupon with same code exists
+  const existingCoupon = await Coupon.findOne({ code: code?.toUpperCase?.() || code, isDeleted: false });
   if (existingCoupon) {
     throw new ConflictError('Coupon code already exists');
   }
@@ -176,9 +177,8 @@ const deleteCoupon = asyncHandler(async (req, res, next) => {
     throw new NotFoundError('Coupon not found');
   }
 
-  coupon.isDeleted = true;
-  coupon.deletedAt = new Date();
-  await coupon.save();
+  // Hard delete — frees the unique index on `code` so the same code can be re-created
+  await Coupon.findByIdAndDelete(id);
 
   res.status(200).json({
     status: 'success',

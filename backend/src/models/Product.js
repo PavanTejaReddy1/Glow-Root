@@ -267,7 +267,9 @@ productSchema.pre('save', function(next) {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '');
   }
-  next();
+  if (typeof next === 'function') {
+    next();
+  }
 });
 
 // Static method to get featured products

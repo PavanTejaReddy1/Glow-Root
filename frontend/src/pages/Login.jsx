@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import AuthLayout from '../components/auth/AuthLayout.jsx';
 import AuthCard from '../components/auth/AuthCard.jsx';
@@ -8,10 +8,13 @@ import AuthInput from '../components/auth/AuthInput.jsx';
 import PasswordInput from '../components/auth/PasswordInput.jsx';
 import SocialLogin from '../components/auth/SocialLogin.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
+  const { success, error } = useToast();
   const {
     register,
     handleSubmit,
@@ -23,19 +26,15 @@ export default function Login() {
   }, []);
 
   const onSubmit = async (data) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Login data:', data);
-    
-    // Login user with AuthContext
-    login({
-      email: data.email,
-      fullName: data.email.split('@')[0], // Use email as name for demo
-      token: 'mock-jwt-token'
-    });
-    
-    // Navigate to home after successful login
-    navigate('/');
+    try {
+      await login({ email: data.email, password: data.password });
+      success('Login successful! Welcome back.');
+      const from = location.state?.from?.pathname || '/';
+      navigate(from, { replace: true });
+    } catch (err) {
+      console.error('Login error:', err);
+      error(err.response?.data?.message || 'Login failed. Please check your credentials and try again.');
+    }
   };
 
   return (

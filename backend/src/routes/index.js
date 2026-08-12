@@ -9,6 +9,8 @@ const wishlistRoutes = require('./wishlistRoutes');
 const reviewRoutes = require('./reviewRoutes');
 const couponRoutes = require('./couponRoutes');
 const analyticsRoutes = require('./analyticsRoutes');
+const customerRoutes = require('./customerRoutes');
+const settingsRoutes = require('./settingsRoutes');
 
 const router = express.Router();
 
@@ -22,5 +24,7 @@ router.use('/wishlist', wishlistRoutes);
 router.use('/reviews', reviewRoutes);
 router.use('/coupons', couponRoutes);
 router.use('/analytics', analyticsRoutes);
+router.use('/admin/customers', customerRoutes);
+router.use('/settings', settingsRoutes);
 
 module.exports = router;

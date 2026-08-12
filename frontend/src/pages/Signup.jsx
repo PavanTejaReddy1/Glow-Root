@@ -8,10 +8,12 @@ import AuthInput from '../components/auth/AuthInput.jsx';
 import PasswordInput from '../components/auth/PasswordInput.jsx';
 import SocialLogin from '../components/auth/SocialLogin.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
 
 export default function Signup() {
   const navigate = useNavigate();
-  const { login } = useAuth();
+  const { register: registerUser } = useAuth();
+  const { success, error } = useToast();
   const {
     register,
     handleSubmit,
@@ -26,20 +28,29 @@ export default function Signup() {
   const password = watch('password');
 
   const onSubmit = async (data) => {
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log('Signup data:', data);
-    
-    // Login user with AuthContext after signup
-    login({
-      email: data.email,
-      fullName: data.fullName,
-      phone: data.phone,
-      token: 'mock-jwt-token'
-    });
-    
-    // Navigate to home after successful signup
-    navigate('/');
+    try {
+      const nameParts = data.fullName.split(' ');
+      const userData = {
+        firstName: nameParts[0],
+        email: data.email,
+        password: data.password
+      };
+
+      if (nameParts.length > 1) {
+        userData.lastName = nameParts.slice(1).join(' ');
+      }
+
+      if (data.phone) {
+        userData.phone = data.phone;
+      }
+
+      await registerUser(userData);
+      success('Account created successfully! Welcome to GlowRoot.');
+      navigate('/');
+    } catch (err) {
+      console.error('Signup error:', err);
+      error(err.response?.data?.message || 'Signup failed. Please try again with different credentials.');
+    }
   };
 
   return (
@@ -94,9 +105,8 @@ export default function Signup() {
           <AuthInput
             label="Phone Number"
             type="tel"
-            placeholder="Enter your phone number"
+            placeholder="Enter your phone number (optional)"
             {...register('phone', {
-              required: 'Phone number is required',
               pattern: {
                 value: /^[6-9]\d{9}$/,
                 message: 'Invalid phone number'

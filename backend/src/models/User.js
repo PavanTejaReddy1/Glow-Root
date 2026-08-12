@@ -63,9 +63,15 @@ const userSchema = new mongoose.Schema({
   },
   lastName: {
     type: String,
-    required: [true, 'Last name is required'],
+    required: false,
     trim: true,
-    minlength: [2, 'Last name must be at least 2 characters'],
+    validate: {
+      validator: function(v) {
+        if (!v) return true;
+        return v.length >= 2;
+      },
+      message: 'Last name must be at least 2 characters'
+    },
     maxlength: [50, 'Last name cannot exceed 50 characters'],
   },
   email: {
@@ -78,7 +84,7 @@ const userSchema = new mongoose.Schema({
   },
   phone: {
     type: String,
-    required: [true, 'Phone number is required'],
+    required: false,
     trim: true,
     match: [/^[0-9]{10}$/, 'Please provide a valid 10-digit phone number'],
   },
@@ -113,6 +119,19 @@ const userSchema = new mongoose.Schema({
     type: Date,
     select: false,
   },
+  passwordResetOtp: {
+    type: String,
+    select: false,
+  },
+  passwordResetOtpExpires: {
+    type: Date,
+    select: false,
+  },
+  passwordResetOtpVerified: {
+    type: Boolean,
+    default: false,
+    select: false,
+  },
   refreshToken: {
     type: String,
     select: false,
@@ -140,7 +159,6 @@ const userSchema = new mongoose.Schema({
 });
 
 // Indexes
-userSchema.index({ email: 1 });
 userSchema.index({ phone: 1 });
 userSchema.index({ isDeleted: 1 });
 userSchema.index({ createdAt: -1 });
@@ -153,15 +171,24 @@ userSchema.virtual('fullName').get(function() {
 // Pre-save middleware to hash password
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) {
-    return next();
+    if (typeof next === 'function') {
+      return next();
+    }
+    return;
   }
   
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);
-    next();
+    if (typeof next === 'function') {
+      next();
+    }
   } catch (error) {
-    next(error);
+    if (typeof next === 'function') {
+      next(error);
+    } else {
+      throw error;
+    }
   }
 });
 

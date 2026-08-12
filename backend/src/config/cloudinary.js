@@ -1,65 +1,110 @@
 const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-});
+/* ── Check if real Cloudinary credentials are configured ─────────── */
+const CLOUDINARY_CONFIGURED =
+  process.env.CLOUDINARY_CLOUD_NAME &&
+  process.env.CLOUDINARY_CLOUD_NAME !== 'your_cloudinary_cloud_name' &&
+  process.env.CLOUDINARY_API_KEY &&
+  process.env.CLOUDINARY_API_KEY !== 'your_cloudinary_api_key' &&
+  process.env.CLOUDINARY_API_SECRET &&
+  process.env.CLOUDINARY_API_SECRET !== 'your_cloudinary_api_secret';
 
-const storage = new CloudinaryStorage({
-  cloudinary: cloudinary,
-  params: {
-    folder: 'glowroot',
-    allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
-    transformation: [
-      { quality: 'auto', fetch_format: 'auto' },
-    ],
+if (CLOUDINARY_CONFIGURED) {
+  cloudinary.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key:    process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
+  });
+  console.log('✓ Cloudinary configured');
+} else {
+  console.log('⚠  Cloudinary credentials not set — using local disk storage for images.');
+  console.log('   Add CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET to .env');
+}
+
+/* ── Local disk storage (used when Cloudinary is not configured) ─── */
+const UPLOADS_DIR = path.join(__dirname, '../../uploads');
+
+if (!CLOUDINARY_CONFIGURED) {
+  if (!fs.existsSync(UPLOADS_DIR)) {
+    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+}
+
+const localStorageEngine = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+  filename: (_req, file, cb) => {
+    const unique = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
+    cb(null, `${unique}${path.extname(file.originalname)}`);
   },
 });
 
-const uploadProductImages = (req, res, next) => {
-  const multer = require('multer');
-  const upload = multer({
-    storage: storage,
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-      if (allowedMimes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'), false);
-      }
+/* ── Cloudinary storage engine ─────────────────────────────────────  */
+function getCloudinaryStorage(folder = 'glowroot') {
+  const { CloudinaryStorage } = require('multer-storage-cloudinary');
+  return new CloudinaryStorage({
+    cloudinary,
+    params: {
+      folder,
+      allowed_formats: ['jpg', 'jpeg', 'png', 'webp'],
+      transformation: [{ quality: 'auto', fetch_format: 'auto' }],
     },
   });
+}
 
-  return upload.array('images', 10); // Max 10 images
+/* ── Multer file filter ─────────────────────────────────────────────  */
+const imageFilter = (_req, file, cb) => {
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (allowed.includes(file.mimetype)) return cb(null, true);
+  cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'), false);
 };
 
-const uploadSingleImage = (req, res, next) => {
-  const multer = require('multer');
+/* ── After local upload: normalise req.files to match Cloudinary shape
+   Cloudinary sets file.path = secure_url and file.filename = public_id
+   For local storage we replicate that so the controller works the same. */
+function normalisLocalFiles(req, res, next) {
+  if (CLOUDINARY_CONFIGURED) return next();
+  if (req.files && Array.isArray(req.files)) {
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    req.files = req.files.map(f => ({
+      ...f,
+      path:     `${baseUrl}/uploads/${f.filename}`,   // public URL
+      filename: f.filename,                             // acts as publicId
+    }));
+  }
+  next();
+}
+
+/* ── Upload middleware factories ────────────────────────────────────  */
+const uploadProductImages = () => {
+  const storage = CLOUDINARY_CONFIGURED
+    ? getCloudinaryStorage('glowroot/products')
+    : localStorageEngine;
+
   const upload = multer({
-    storage: storage,
-    limits: {
-      fileSize: 2 * 1024 * 1024, // 2MB limit
-    },
-    fileFilter: (req, file, cb) => {
-      const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-      if (allowedMimes.includes(file.mimetype)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'), false);
-      }
-    },
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },  // 10 MB per file
+    fileFilter: imageFilter,
   });
 
-  return upload.single('image');
+  // Return an array middleware that also normalises local paths
+  return [upload.array('images', 10), normalisLocalFiles];
 };
 
-module.exports = {
-  cloudinary,
-  uploadProductImages,
-  uploadSingleImage,
+const uploadSingleImage = () => {
+  const storage = CLOUDINARY_CONFIGURED
+    ? getCloudinaryStorage('glowroot/misc')
+    : localStorageEngine;
+
+  const upload = multer({
+    storage,
+    limits: { fileSize: 10 * 1024 * 1024 },  // 10 MB
+    fileFilter: imageFilter,
+  });
+
+  return [upload.single('image'), normalisLocalFiles];
 };
+
+module.exports = { cloudinary, uploadProductImages, uploadSingleImage };

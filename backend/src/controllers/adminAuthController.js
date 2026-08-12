@@ -1,7 +1,10 @@
 const Admin = require('../models/Admin');
-const { jwt } = require('../config');
-const { UnauthorizedError, ConflictError } = require('../utils/errorHandler');
+const { jwt, email: emailConfig } = require('../config');
+const { UnauthorizedError, ConflictError, ValidationError } = require('../utils/errorHandler');
 const asyncHandler = require('../utils/asyncHandler');
+
+const generateOtp = () => String(Math.floor(100000 + Math.random() * 900000));
+const OTP_EXPIRY_MINUTES = 10;
 
 const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
@@ -167,6 +170,147 @@ const changePassword = asyncHandler(async (req, res, next) => {
   });
 });
 
+const sendAdminPasswordResetOtp = asyncHandler(async (req, res) => {
+  // Admin email always comes from .env — don't accept it from the request body
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const { email: requestedEmail } = req.body;
+
+  if (!requestedEmail) throw new ValidationError('Email is required');
+
+  // Security: only allow OTP for the configured admin email
+  if (requestedEmail.toLowerCase().trim() !== adminEmail?.toLowerCase().trim()) {
+    return res.status(200).json({ status: 'success', message: 'If this email exists, an OTP has been sent.' });
+  }
+
+  const admin = await Admin.findOne({ email: adminEmail.toLowerCase() });
+  if (!admin || !admin.isActive) {
+    return res.status(200).json({ status: 'success', message: 'If this email exists, an OTP has been sent.' });
+  }
+
+  const otp     = generateOtp();
+  const expires = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+  await Admin.findByIdAndUpdate(admin._id, {
+    passwordResetOtp:         otp,
+    passwordResetOtpExpires:  expires,
+    passwordResetOtpVerified: false,
+  });
+
+  await emailConfig.sendEmail({
+    email: admin.email,
+    subject: 'Reset your GlowRoot admin password',
+    from: `"GlowRoot" <${process.env.EMAIL_FROM}>`,
+    replyTo: process.env.EMAIL_USER,
+    html: `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:40px 0;">
+    <tr>
+      <td align="center">
+        <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.06);">
+
+          <!-- Header -->
+          <tr>
+            <td align="center" style="background:#3A1F0D;padding:32px 40px;">
+              <h1 style="margin:0;color:#F8F2E8;font-size:26px;font-weight:700;letter-spacing:1px;font-family:'Georgia',serif;">
+                GlowRoot Admin
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Body -->
+          <tr>
+            <td style="padding:40px 40px 32px;">
+              <h2 style="margin:0 0 16px;color:#1a1a1a;font-size:20px;font-weight:600;">
+                Password Reset Request
+              </h2>
+              <p style="margin:0 0 24px;color:#444444;font-size:15px;line-height:1.6;">
+                Hi ${admin.name},
+              </p>
+              <p style="margin:0 0 28px;color:#444444;font-size:15px;line-height:1.6;">
+                We received a request to reset the password for your GlowRoot admin account.
+              </p>
+              <p style="margin:0 0 12px;color:#444444;font-size:15px;line-height:1.6;">
+                Your password reset OTP is:
+              </p>
+
+              <!-- OTP Box -->
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+                <tr>
+                  <td align="center">
+                    <div style="display:inline-block;background:#F8F2E8;border:2px solid #C59B45;border-radius:8px;padding:20px 40px;">
+                      <span style="font-size:40px;font-weight:700;letter-spacing:14px;color:#3A1F0D;font-family:'Courier New',monospace;">${otp}</span>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:0 0 28px;color:#444444;font-size:15px;line-height:1.6;">
+                This OTP will expire in <strong>${OTP_EXPIRY_MINUTES} minutes</strong>.
+              </p>
+              <p style="margin:0;color:#888888;font-size:14px;line-height:1.6;">
+                If you did not request a password reset, please secure your account immediately — someone may have access to this email address.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Divider -->
+          <tr>
+            <td style="padding:0 40px;">
+              <hr style="border:none;border-top:1px solid #eeeeee;margin:0;">
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding:24px 40px 32px;">
+              <p style="margin:0;color:#888888;font-size:13px;line-height:1.6;">
+                Thanks,<br>
+                <strong style="color:#555555;">GlowRoot Team</strong>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+
+        <!-- Sub-footer -->
+        <p style="margin:20px 0 0;color:#aaaaaa;font-size:12px;text-align:center;">
+          &copy; ${new Date().getFullYear()} GlowRoot. All rights reserved.
+        </p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`,
+  });
+
+  res.status(200).json({ status: 'success', message: 'OTP sent to the registered admin email.' });
+});
+
+const verifyAdminOtpAndResetPassword = asyncHandler(async (req, res) => {
+  const { email: requestedEmail, otp, newPassword } = req.body;
+  if (!requestedEmail || !otp || !newPassword) throw new ValidationError('Email, OTP and new password are required');
+  if (newPassword.length < 8) throw new ValidationError('Password must be at least 8 characters');
+
+  const admin = await Admin.findOne({ email: requestedEmail.toLowerCase().trim() })
+    .select('+password +passwordResetOtp +passwordResetOtpExpires');
+
+  if (!admin) throw new ValidationError('Invalid OTP or email');
+  if (!admin.passwordResetOtp || admin.passwordResetOtp !== otp.trim())
+    throw new ValidationError('Invalid OTP');
+  if (!admin.passwordResetOtpExpires || admin.passwordResetOtpExpires < new Date())
+    throw new ValidationError('OTP has expired. Please request a new one.');
+
+  admin.password                  = newPassword;
+  admin.passwordResetOtp          = undefined;
+  admin.passwordResetOtpExpires   = undefined;
+  admin.passwordResetOtpVerified  = undefined;
+  await admin.save();
+
+  res.status(200).json({ status: 'success', message: 'Password reset successful. Please login with your new password.' });
+});
+
 module.exports = {
   login,
   logout,
@@ -174,4 +318,6 @@ module.exports = {
   getProfile,
   updateProfile,
   changePassword,
+  sendAdminPasswordResetOtp,
+  verifyAdminOtpAndResetPassword,
 };

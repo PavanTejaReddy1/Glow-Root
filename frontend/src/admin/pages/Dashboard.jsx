@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   DollarSign,
@@ -12,78 +13,156 @@ import StatCard from '../components/common/StatCard.jsx';
 import StatusBadge from '../components/common/StatusBadge.jsx';
 import DataTable from '../components/common/DataTable.jsx';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, PieChart, Pie, Cell } from 'recharts';
-
-const salesData = [
-  { name: 'Jan', sales: 4000, revenue: 24000 },
-  { name: 'Feb', sales: 3000, revenue: 13980 },
-  { name: 'Mar', sales: 2000, revenue: 9800 },
-  { name: 'Apr', sales: 2780, revenue: 39080 },
-  { name: 'May', sales: 1890, revenue: 48000 },
-  { name: 'Jun', sales: 2390, revenue: 38000 },
-];
-
-const categoryData = [
-  { name: 'Serums', value: 400 },
-  { name: 'Moisturizers', value: 300 },
-  { name: 'Masks', value: 300 },
-  { name: 'Oils', value: 200 },
-  { name: 'Cleansers', value: 278 },
-];
+import { productService } from '../../services/productService.js';
+import { orderService } from '../../services/orderService.js';
 
 const COLORS = ['#C59B45', '#5B7F3A', '#6E4B2A', '#A8771E', '#4B2F1F'];
 
-const recentOrders = [
-  { id: 'ORD-001', customer: 'Priya Sharma', products: 'Radiance Face Serum, Hydra Glow Moisturizer', total: '₹2,198', status: 'Delivered', date: '2024-02-15' },
-  { id: 'ORD-002', customer: 'Rahul Verma', products: 'Night Repair Oil', total: '₹1,199', status: 'Shipped', date: '2024-02-14' },
-  { id: 'ORD-003', customer: 'Ananya Patel', products: 'Purifying Clay Mask, Gentle Cleansing Milk', total: '₹1,348', status: 'Processing', date: '2024-02-14' },
-  { id: 'ORD-004', customer: 'Vikram Singh', products: 'Eye Brightening Cream, Rose Water Toner', total: '₹1,448', status: 'Pending', date: '2024-02-13' },
-  { id: 'ORD-005', customer: 'Meera Krishnan', products: 'Anti-Aging Serum', total: '₹1,349', status: 'Delivered', date: '2024-02-12' },
-];
-
 const orderColumns = [
-  { key: 'id', label: 'Order ID' },
-  { key: 'customer', label: 'Customer' },
-  { key: 'products', label: 'Products' },
-  { key: 'total', label: 'Total' },
+  { key: 'orderNumber', label: 'Order ID', render: (value) => <span className="font-mono text-sm">#{value}</span> },
+  { key: 'customer', label: 'Customer', render: (value) => value?.fullName || 'N/A' },
+  { key: 'items', label: 'Products', render: (value) => <span className="text-sm">{value?.length || 0} items</span> },
+  { key: 'total', label: 'Total', render: (value) => <span className="font-medium">₹{value?.toLocaleString('en-IN') || 0}</span> },
   { key: 'status', label: 'Status', render: (value) => <StatusBadge status={value} /> },
-  { key: 'date', label: 'Date' },
+  { key: 'createdAt', label: 'Date', render: (value) => new Date(value).toLocaleDateString('en-IN') },
 ];
 
 export default function Dashboard() {
+  const [stats, setStats] = useState({
+    totalRevenue: 0,
+    monthlyRevenue: 0,
+    totalOrders: 0,
+    totalCustomers: 0,
+    pendingOrders: 0,
+    deliveredOrders: 0,
+    cancelledOrders: 0,
+    lowStockProducts: 0
+  });
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [salesData, setSalesData] = useState([]);
+  const [categoryData, setCategoryData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchDashboardData();
+    // Set up polling for real-time updates every 30 seconds
+    const interval = setInterval(fetchDashboardData, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchDashboardData = async () => {
+    try {
+      // Fetch products for stats
+      const productsResponse = await productService.getProducts();
+      const products = productsResponse.data?.products || [];
+      
+      // Fetch orders for stats
+      const ordersResponse = await orderService.getAllOrders();
+      const orders = ordersResponse.data?.orders || [];
+
+      // Calculate stats
+      const totalRevenue = orders.reduce((sum, order) => sum + (order.total || 0), 0);
+      const monthlyRevenue = orders
+        .filter(order => {
+          const orderDate = new Date(order.createdAt);
+          const now = new Date();
+          return orderDate.getMonth() === now.getMonth() && orderDate.getFullYear() === now.getFullYear();
+        })
+        .reduce((sum, order) => sum + (order.total || 0), 0);
+      
+      const totalOrders = orders.length;
+      const pendingOrders = orders.filter(o => o.status === 'pending').length;
+      const deliveredOrders = orders.filter(o => o.status === 'delivered').length;
+      const cancelledOrders = orders.filter(o => o.status === 'cancelled').length;
+      const lowStockProducts = products.filter(p => p.stock < 10).length;
+      
+      // Get unique customers
+      const uniqueCustomers = new Set(orders.map(o => o.user?._id));
+      const totalCustomers = uniqueCustomers.size;
+
+      setStats({
+        totalRevenue,
+        monthlyRevenue,
+        totalOrders,
+        totalCustomers,
+        pendingOrders,
+        deliveredOrders,
+        cancelledOrders,
+        lowStockProducts
+      });
+
+      // Set recent orders (last 5)
+      setRecentOrders(orders.slice(0, 5));
+
+      // Generate sales data by month (last 6 months)
+      const months = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push({
+          name: date.toLocaleString('default', { month: 'short' }),
+          sales: orders.filter(o => {
+            const orderDate = new Date(o.createdAt);
+            return orderDate.getMonth() === date.getMonth() && orderDate.getFullYear() === date.getFullYear();
+          }).length,
+          revenue: orders
+            .filter(o => {
+              const orderDate = new Date(o.createdAt);
+              return orderDate.getMonth() === date.getMonth() && orderDate.getFullYear() === date.getFullYear();
+            })
+            .reduce((sum, o) => sum + (o.total || 0), 0)
+        });
+      }
+      setSalesData(months);
+
+      // Generate category data
+      const categoryCount = {};
+      products.forEach(product => {
+        const category = product.category || 'Other';
+        categoryCount[category] = (categoryCount[category] || 0) + 1;
+      });
+      setCategoryData(Object.entries(categoryCount).map(([name, value]) => ({ name, value })));
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-t-amber-500 border-gray-200" />
+      </div>
+    );
+  }
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Today's Revenue"
-          value="₹45,678"
+          title="Total Revenue"
+          value={`₹${stats.totalRevenue.toLocaleString('en-IN')}`}
           icon={DollarSign}
-          trend="up"
-          trendValue="12.5%"
           color="gold"
         />
         <StatCard
           title="Monthly Revenue"
-          value="₹12,45,678"
+          value={`₹${stats.monthlyRevenue.toLocaleString('en-IN')}`}
           icon={TrendingUp}
-          trend="up"
-          trendValue="8.2%"
           color="amber"
         />
         <StatCard
           title="Total Orders"
-          value="1,234"
+          value={stats.totalOrders}
           icon={ShoppingCart}
-          trend="up"
-          trendValue="15.3%"
           color="brown"
         />
         <StatCard
           title="Customers"
-          value="456"
+          value={stats.totalCustomers}
           icon={Users}
-          trend="up"
-          trendValue="5.7%"
           color="green"
         />
       </div>
@@ -92,34 +171,26 @@ export default function Dashboard() {
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Pending Orders"
-          value="23"
+          value={stats.pendingOrders}
           icon={ShoppingCart}
-          trend="down"
-          trendValue="3.2%"
           color="amber"
         />
         <StatCard
           title="Delivered"
-          value="1,156"
+          value={stats.deliveredOrders}
           icon={Package}
-          trend="up"
-          trendValue="12.1%"
           color="green"
         />
         <StatCard
           title="Cancelled"
-          value="55"
+          value={stats.cancelledOrders}
           icon={TrendingDown}
-          trend="down"
-          trendValue="8.5%"
           color="brown"
         />
         <StatCard
           title="Low Stock"
-          value="12"
+          value={stats.lowStockProducts}
           icon={AlertCircle}
-          trend="up"
-          trendValue="2.1%"
           color="amber"
         />
       </div>
