@@ -7,7 +7,7 @@ import axios from 'axios';
  * stays unchanged.
  */
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://glow-root-rose.vercel.app',
   timeout: 30000,
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
@@ -43,7 +43,7 @@ api.interceptors.response.use(
       // For auth checks, just reject — don't loop
       if (isAuthCheck) return Promise.reject(error);
 
-      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000';
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'https://glow-root-rose.vercel.app';
 
       if (isAdminRoute) {
         // Try admin token refresh

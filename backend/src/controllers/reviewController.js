@@ -219,13 +219,90 @@ const markHelpful = asyncHandler(async (req, res, next) => {
   });
 });
 
+const getAllReviews = asyncHandler(async (req, res, next) => {
+  const { page = 1, limit = 10, status } = req.query;
+
+  const skip = (page - 1) * limit;
+  const filter = status ? { status } : {};
+
+  const [reviews, total] = await Promise.all([
+    Review.find(filter)
+      .populate('user', 'firstName lastName email')
+      .populate('product', 'name')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit)),
+    Review.countDocuments(filter),
+  ]);
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      reviews,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit),
+      },
+    },
+  });
+});
+
+const updateReviewStatus = asyncHandler(async (req, res, next) => {
+  const { id } = req.params;
+  const { status } = req.body;
+
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    throw new ValidationError('Invalid status value');
+  }
+
+  const review = await Review.findById(id);
+
+  if (!review) {
+    throw new NotFoundError('Review not found');
+  }
+
+  review.status = status;
+  if (status === 'approved') {
+    review.approvedBy = req.admin._id;
+    review.approvedAt = new Date();
+  } else if (status === 'rejected') {
+    review.rejectedBy = req.admin._id;
+    review.rejectedAt = new Date();
+  }
+  await review.save();
+
+  // Update product rating if status changed to approved
+  if (status === 'approved') {
+    const product = await Product.findById(review.product);
+    if (product) {
+      const reviews = await Review.find({ product: review.product, status: 'approved' });
+      const avgRating = reviews.length > 0 
+        ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length 
+        : 0;
+      product.rating = Math.round(avgRating * 10) / 10;
+      product.reviewCount = reviews.length;
+      await product.save();
+    }
+  }
+
+  res.status(200).json({
+    status: 'success',
+    message: 'Review status updated successfully',
+    data: { review },
+  });
+});
+
 module.exports = {
   createReview,
   getProductReviews,
   getUserReviews,
   getPendingReviews,
+  getAllReviews,
   approveReview,
   rejectReview,
+  updateReviewStatus,
   deleteReview,
   markHelpful,
 };

@@ -1,21 +1,37 @@
 const Wishlist = require('../models/Wishlist');
 const Product = require('../models/Product');
-const { NotFoundError } = require('../utils/errorHandler');
+const { NotFoundError, ValidationError } = require('../utils/errorHandler');
 const asyncHandler = require('../utils/asyncHandler');
 
 const getWishlist = asyncHandler(async (req, res, next) => {
-  let wishlist = await Wishlist.findOne({ user: req.user._id }).populate('items.product', 'name images price discount status isDeleted');
+  let wishlist = await Wishlist.findOne({ user: req.user._id }).populate('items.product', 'name images price discount status isDeleted slug');
 
   if (!wishlist) {
     wishlist = await Wishlist.create({ user: req.user._id });
   }
 
-  wishlist.items = wishlist.items.filter(item => {
+  // Filter out inactive/deleted products without saving
+  const validItems = wishlist.items.filter(item => {
     const product = item.product;
     return product && product.status === 'active' && !product.isDeleted;
   });
 
-  await wishlist.save();
+  // Update productSlug for existing items if missing
+  validItems.forEach(item => {
+    if (item.product && !item.productSlug && item.product.slug) {
+      item.productSlug = item.product.slug;
+    }
+  });
+
+  // Only save if items were removed or slugs were added
+  if (validItems.length !== wishlist.items.length) {
+    wishlist.items = validItems;
+    await wishlist.save();
+  } else if (validItems.some(item => !item.productSlug && item.product?.slug)) {
+    // Save if we added slugs
+    wishlist.items = validItems;
+    await wishlist.save();
+  }
 
   res.status(200).json({
     status: 'success',
@@ -54,6 +70,7 @@ const addToWishlist = asyncHandler(async (req, res, next) => {
 
 const removeFromWishlist = asyncHandler(async (req, res, next) => {
   const { productId } = req.params;
+  console.log('Remove from wishlist - productId:', productId, 'type:', typeof productId);
 
   const wishlist = await Wishlist.findOne({ user: req.user._id });
 
@@ -61,8 +78,18 @@ const removeFromWishlist = asyncHandler(async (req, res, next) => {
     throw new NotFoundError('Wishlist not found');
   }
 
-  wishlist.removeItem(productId);
-  await wishlist.save();
+  console.log('Wishlist items before remove:', wishlist.items.length);
+  console.log('Wishlist items product IDs:', wishlist.items.map(i => i.product));
+
+  try {
+    wishlist.removeItem(productId);
+    console.log('After removeItem call, items:', wishlist.items.length);
+    await wishlist.save();
+    console.log('After save, items:', wishlist.items.length);
+  } catch (saveError) {
+    console.error('Error saving wishlist after remove:', saveError);
+    throw saveError;
+  }
 
   res.status(200).json({
     status: 'success',

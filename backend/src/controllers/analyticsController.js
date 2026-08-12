@@ -337,6 +337,160 @@ const getCategoryPerformance = asyncHandler(async (req, res, next) => {
   });
 });
 
+const getAnalyticsData = asyncHandler(async (req, res, next) => {
+  const { period = 'monthly' } = req.query;
+  const now = new Date();
+  
+  // Calculate date ranges
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const monthAgo = new Date(now);
+  monthAgo.setMonth(monthAgo.getMonth() - 12);
+
+  const startDate = new Date(now);
+  startDate.setMonth(startDate.getMonth() - 12);
+
+  const groupBy = {
+    year: { $year: '$createdAt' },
+    month: { $month: '$createdAt' },
+  };
+
+  // Fetch all data in parallel
+  const [
+    totalRevenue,
+    totalSales,
+    totalCustomers,
+    totalOrdersResult,
+    revenueData,
+    categoryData,
+    topProductsResult,
+  ] = await Promise.all([
+    Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' }, 'payment.status': 'paid' } },
+      { $group: { _id: null, total: { $sum: '$total' } } },
+    ]),
+    Order.countDocuments({ status: { $ne: 'cancelled' } }),
+    User.countDocuments({ role: 'user', isDeleted: false }),
+    Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } },
+      { $group: { _id: null, total: { $sum: 1 } } },
+    ]),
+    Order.aggregate([
+      {
+        $match: {
+          createdAt: { $gte: startDate },
+          status: { $ne: 'cancelled' },
+          'payment.status': 'paid',
+        },
+      },
+      {
+        $group: {
+          _id: groupBy,
+          revenue: { $sum: '$total' },
+          orders: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id': 1 } },
+      { $limit: 12 },
+    ]),
+    Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } },
+      { $unwind: '$items' },
+      {
+        $lookup: {
+          from: 'products',
+          localField: 'items.product',
+          foreignField: '_id',
+          as: 'product',
+        },
+      },
+      { $unwind: '$product' },
+      {
+        $group: {
+          _id: '$product.category',
+          sales: { $sum: '$items.quantity' },
+          orders: { $sum: 1 },
+          revenue: { $sum: '$items.total' },
+        },
+      },
+      {
+        $lookup: {
+          from: 'categories',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'category',
+        },
+      },
+      { $unwind: '$category' },
+      {
+        $project: {
+          name: '$category.name',
+          sales: 1,
+          orders: 1,
+          revenue: 1,
+        },
+      },
+      { $sort: { sales: -1 } },
+      { $limit: 10 },
+    ]),
+    Order.aggregate([
+      { $match: { status: { $ne: 'cancelled' } } },
+      { $unwind: '$items' },
+      {
+        $group: {
+          _id: '$items.product',
+          sales: { $sum: '$items.quantity' },
+          revenue: { $sum: '$items.total' },
+        },
+      },
+      { $sort: { sales: -1 } },
+      { $limit: 5 },
+      {
+        $lookup: {
+          from: 'products',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'product',
+        },
+      },
+      { $unwind: '$product' },
+      {
+        $project: {
+          name: '$product.name',
+          sales: 1,
+          revenue: 1,
+        },
+      },
+    ]),
+  ]);
+
+  const totalOrders = totalOrdersResult[0]?.total || 0;
+  const avgOrderValue = totalOrders > 0 ? (totalRevenue[0]?.total || 0) / totalOrders : 0;
+
+  // Format revenue data for charts
+  const formattedRevenueData = revenueData.map(item => ({
+    name: `${item._id.year}-${String(item._id.month).padStart(2, '0')}`,
+    revenue: item.revenue,
+    orders: item.orders,
+  }));
+
+  res.status(200).json({
+    status: 'success',
+    data: {
+      stats: {
+        totalRevenue: totalRevenue[0]?.total || 0,
+        totalSales: totalSales,
+        totalCustomers: totalCustomers,
+        avgOrderValue: Math.round(avgOrderValue),
+      },
+      revenueData: formattedRevenueData,
+      categoryData,
+      topProducts: topProductsResult,
+    },
+  });
+});
+
 module.exports = {
   getDashboardStats,
   getRevenueChart,
@@ -344,4 +498,5 @@ module.exports = {
   getCustomerGrowth,
   getOrderStatusDistribution,
   getCategoryPerformance,
+  getAnalyticsData,
 };
