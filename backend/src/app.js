@@ -28,11 +28,8 @@ securityMiddleware(app);
 
 app.use(cors({
 
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5173',
-    'https://glow-root-5z19.vercel.app',
-    'https://glow-root-rose.vercel.app'
-  ],
+  origin: true,
+
   credentials: true,
 
 }));
