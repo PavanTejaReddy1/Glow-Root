@@ -16,7 +16,7 @@ import axios from 'axios';
 
 export const api = axios.create({
 
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://glow-root-rose.vercel.app/api/v1',
+  baseURL: import.meta.env.VITE_API_BASE_URL || 'https://glow-root-ne7xo2or4-pavan-teja-reddys-projects.vercel.app/api/v1',
 
   timeout: 10000,
 
